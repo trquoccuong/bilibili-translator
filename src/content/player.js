@@ -1,10 +1,14 @@
 // Playback state and TTS sync: speaks the current line, nudging voice and video speed to stay in sync.
 
 const DUCK = 0.25; // original audio volume while dubbing
-const HOLD_RATE = 0.5; // video speed while the previous line finishes speaking
+const HOLD_RATE = 0.8; // video speed while the previous sentence finishes speaking; lower is a visible lurch
 const HOLD_MAX_MS = 3000; // Chrome sometimes never fires onend; stop waiting after this
+const RATE_STEP = 0.3; // max voice slowdown between consecutive sentences, so the speed doesn't jump around
+const RATE_RESET_MS = 1500; // after this much silence the voice may start fresh at its natural speed
 
 let pending = -1, holdSince = 0; // next line waiting for the current utterance to finish
+let grpEnd = -1; // last line of the sentence being read
+let lastRate = 1, lastEnd = 0; // previous utterance's voice rate and when it ended
 
 let on = false, lines = [], tr = [], say = [], tone = [], lex = [], cur = -1, pace = 1, utter = null, timer = 0;
 let meter = null, level = 0, avgLevel = 0; // original-audio loudness: short (~0.3 s) and long (~5 s) averages
@@ -67,6 +71,7 @@ function sampleLoudness() {
 function hush() {
   utter = null;
   pending = -1;
+  grpEnd = -1;
   speechSynthesis.cancel();
   setRate(baseRate);
   cur = -1; // re-speak the current line on resume
@@ -92,7 +97,7 @@ function tick() {
   cur = i;
   if (i < 0) return void (sub.textContent = '');
   sub.textContent = tr[i] || lines[i].content;
-  if (!tr[i] || video.paused) return;
+  if (!tr[i] || video.paused || i <= grpEnd) return; // i <= grpEnd: already read as part of the current sentence
   if (utter) {
     // Previous line still talking: let it finish its last words instead of cutting it, and slow the video meanwhile.
     pending = i;
@@ -108,8 +113,15 @@ function speakPending() {
 }
 
 function speak(i) {
-  const text = applyLexicon(say[i] || tr[i], lex), syl = syllables(text), t = toneOf(tone[i]);
-  const { ttsRate, videoRate } = plan(syl, slotOf(lines, i), sps, baseRate, tempoAt(lines, i, pace) * t.rate);
+  const j = (grpEnd = sentenceEnd(lines, tr, i));
+  const parts = [];
+  for (let k = i; k <= j; k++) parts.push(say[k] || tr[k]);
+  const text = applyLexicon(parts.join(' '), lex), syl = syllables(text), t = toneOf(tone[i]);
+  // Going faster than the plan needs is safe (finishes early); a sudden slowdown is what sounds jerky.
+  const floor = performance.now() - lastEnd < RATE_RESET_MS ? lastRate - RATE_STEP : 1;
+  const tempo = Math.max(tempoAt(lines, i, pace, j) * t.rate, floor);
+  const { ttsRate, videoRate } = plan(syl, slotOf(lines, i, j), sps, baseRate, tempo);
+  lastRate = ttsRate;
   utter = null;
   speechSynthesis.cancel();
   setRate(baseRate * videoRate);
@@ -123,6 +135,7 @@ function speak(i) {
   u.onend = () => {
     if (u !== utter) return; // cancelled or replaced
     utter = null;
+    lastEnd = performance.now();
     const talk = (performance.now() - t0) / 1000 - UTTER_OVERHEAD;
     if (talk > 0.3) sps = 0.8 * sps + 0.2 * (syl / (talk * ttsRate)); // learn this voice's real speed
     if (pending >= 0) speakPending();

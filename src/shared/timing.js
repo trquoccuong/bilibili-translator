@@ -11,10 +11,25 @@ function syllables(text) {
   return text.trim().split(/\s+/).filter(Boolean).length;
 }
 
-// Seconds available for line i: until the next line starts (AI subtitles are back-to-back).
-function slotOf(lines, i) {
-  const next = lines[i + 1];
-  return Math.max(0.3, (next ? next.from : lines[i].to) - lines[i].from);
+// Seconds available for lines i..j: until the line after j starts (AI subtitles are back-to-back).
+function slotOf(lines, i, j = i) {
+  const next = lines[j + 1];
+  return Math.max(0.3, (next ? next.from : lines[j].to) - lines[i].from);
+}
+
+const SENTENCE_END = /[.!?…。！？]["'”’)]*$/;
+const JOIN_GAP = 0.4; // s of silence that ends a sentence even without punctuation
+const MAX_SENTENCE = 8; // s; longer runs get split so the voice can't drift far from the picture
+
+// Last line of the sentence starting at i. AI subtitles cut sentences mid-way; reading the pieces
+// as one utterance keeps the voice's intonation whole instead of restarting it every line.
+function sentenceEnd(lines, tr, i) {
+  let j = i;
+  while (
+    j + 1 < lines.length && tr[j + 1] && !SENTENCE_END.test(tr[j].trim()) &&
+    lines[j + 1].from - lines[j].to < JOIN_GAP && lines[j + 1].to - lines[i].from <= MAX_SENTENCE
+  ) j++;
+  return j;
 }
 
 // Max words the translation of line i may use, at `rate` words/sec of natural speech.
@@ -51,7 +66,9 @@ function medianPace(lines) {
   return p.length ? p[p.length >> 1] : 1;
 }
 
-// How much faster than normal line i is spoken (e.g. an editor sped the clip up).
-function tempoAt(lines, i, median) {
-  return lines[i].content.length / slotOf(lines, i) / median;
+// How much faster than normal lines i..j are spoken (e.g. an editor sped the clip up).
+function tempoAt(lines, i, median, j = i) {
+  let chars = 0;
+  for (let k = i; k <= j; k++) chars += lines[k].content.length;
+  return chars / slotOf(lines, i, j) / median;
 }

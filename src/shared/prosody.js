@@ -1,13 +1,14 @@
 // Expressiveness for the browser voice: per-line tone from Claude + loudness of the original audio.
 
 // Web Speech values: pitch 0–2 (1 = normal), volume 0–1. rate is a floor on top of the timing plan.
+// Pitch stays within ±8%: bigger jumps between neighbouring sentences sound like a different speaker.
 const TONES = {
   neutral: { pitch: 1, rate: 1, volume: 0.85 },
-  excited: { pitch: 1.15, rate: 1.1, volume: 1 },
-  calm: { pitch: 0.95, rate: 1, volume: 0.75 },
-  question: { pitch: 1.1, rate: 1, volume: 0.85 },
-  emphasis: { pitch: 1.05, rate: 1, volume: 1 },
-  sad: { pitch: 0.9, rate: 1, volume: 0.7 },
+  excited: { pitch: 1.08, rate: 1.1, volume: 1 },
+  calm: { pitch: 0.97, rate: 1, volume: 0.75 },
+  question: { pitch: 1.05, rate: 1, volume: 0.85 },
+  emphasis: { pitch: 1.03, rate: 1, volume: 1 },
+  sad: { pitch: 0.95, rate: 1, volume: 0.7 },
 };
 
 const toneOf = t => (Object.hasOwn(TONES, t) ? TONES[t] : TONES.neutral);

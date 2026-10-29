@@ -10,7 +10,7 @@ for (const f of ['pricing', 'timing', 'lexicon', 'prosody', 'languages', 'transl
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../src/shared', f + '.js'), 'utf8'), ctx);
 }
 const L = vm.runInContext(
-  '({ PRICES, CHUNK, costUSD, syllables, slotOf, sylBudget, lineAt, plan, medianPace, tempoAt, buildPrompt, parseTranslation, parseLexicon, applyLexicon, TONES, toneOf, loudnessGain, TRANSLATION_SCHEMA, LANGS, langOf, lexiconKey, voiceKey, cacheKey, systemPrompt })',
+  '({ PRICES, CHUNK, costUSD, syllables, slotOf, sentenceEnd, sylBudget, lineAt, plan, medianPace, tempoAt, buildPrompt, parseTranslation, parseLexicon, applyLexicon, TONES, toneOf, loudnessGain, TRANSLATION_SCHEMA, LANGS, langOf, lexiconKey, voiceKey, cacheKey, systemPrompt })',
   ctx
 );
 // VM-realm objects have a different Object prototype; compare plain JSON copies.
@@ -30,7 +30,24 @@ assert.strictEqual(L.lineAt([], 1), -1);
 
 assert.strictEqual(L.slotOf(lines, 1), 3); // runs until next line starts
 assert.strictEqual(L.slotOf(lines, 2), 2);
+assert.strictEqual(L.slotOf(lines, 0, 1), 6); // a sentence spanning lines 0..1
 assert.strictEqual(L.sylBudget(lines, 0, 5), 18);
+
+// sentences: join lines until end punctuation, a pause, a missing translation or 8 s
+const sent = [
+  { from: 0, to: 2, content: 'x' },
+  { from: 2, to: 4, content: 'x' },
+  { from: 4, to: 6, content: 'x' },
+  { from: 7, to: 9, content: 'x' }, // 1 s pause before
+];
+assert.strictEqual(L.sentenceEnd(sent, ['hôm nay,', 'mình sẽ', 'làm bánh.', 'ok'], 0), 2);
+assert.strictEqual(L.sentenceEnd(sent, ['hôm nay', 'mình sẽ', 'làm bánh', 'ok'], 0), 2); // pause ends it
+assert.strictEqual(L.sentenceEnd(sent, ['thật à?', 'ừ', 'x', 'x'], 0), 0);
+assert.strictEqual(L.sentenceEnd(sent, ['"Xong!"', 'ừ', 'x', 'x'], 0), 0); // closing quote after "!"
+assert.strictEqual(L.sentenceEnd(sent, ['a', '', 'b', 'c'], 0), 0); // next line not translated yet
+assert.strictEqual(L.sentenceEnd(sent, ['a', 'b', 'c', 'd'], 3), 3); // last line
+const long = Array.from({ length: 6 }, (_, k) => ({ from: k * 2, to: k * 2 + 2, content: 'x' }));
+assert.strictEqual(L.sentenceEnd(long, long.map(() => 'a'), 0), 3); // capped at 8 s
 assert.strictEqual(L.sylBudget(lines, 0, 2.8), 10);
 
 assert.strictEqual(L.syllables('  xin chào   thế giới '), 4);
@@ -66,6 +83,7 @@ const paced = [
 ];
 assert.strictEqual(L.medianPace(paced), 2);
 assert.strictEqual(L.tempoAt(paced, 2, 2), 4);
+assert.strictEqual(L.tempoAt(paced, 1, 2, 2), 2); // 12 chars over 3 s = 4 cps, twice the median
 assert.strictEqual(L.medianPace([]), 1);
 
 assert.ok(Math.abs(L.costUSD('claude-haiku-5-5', 1e6, 1e6) - 0.6) < 1e-9);
@@ -85,7 +103,7 @@ same(
 
 // prosody
 same(L.TRANSLATION_SCHEMA.properties.lines.items.properties.tone.enum, Object.keys(L.TONES));
-assert.strictEqual(L.toneOf('question').pitch, 1.1);
+assert.strictEqual(L.toneOf('question').pitch, 1.05);
 assert.strictEqual(L.toneOf('constructor'), L.TONES.neutral);
 assert.strictEqual(L.toneOf(undefined), L.TONES.neutral);
 assert.strictEqual(L.loudnessGain(0.1, 0.1), 1);
