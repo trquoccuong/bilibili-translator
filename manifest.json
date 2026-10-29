@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "Bilibili Vietnamese Dub",
+  "version": "2.0",
+  "description": "Lồng tiếng Việt cho video Bilibili: dịch phụ đề CC/AI bằng Claude, đọc bằng giọng tiếng Việt khớp thời gian.",
+  "permissions": ["storage", "unlimitedStorage"],
+  "host_permissions": ["https://api.anthropic.com/*"],
+  "background": { "service_worker": "src/background/index.js" },
+  "action": { "default_popup": "src/popup/popup.html" },
+  "content_scripts": [
+    {
+      "matches": ["https://www.bilibili.com/video/*", "https://www.bilibili.com/*/video/*"],
+      "js": [
+        "src/shared/timing.js",
+        "src/shared/lexicon.js",
+        "src/shared/prosody.js",
+        "src/shared/languages.js",
+        "src/shared/translation.js",
+        "src/content/bilibili.js",
+        "src/content/ui.js",
+        "src/content/player.js",
+        "src/content/main.js"
+      ]
+    }
+  ]
+}
